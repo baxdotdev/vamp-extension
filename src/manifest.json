@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "Launchblitz",
+  "version": "1.0",
+  "description": "Injects a Launchblitz vamp button on axiom.trade and emits token details for custom handling",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs"
+  ],
+  "icons": {
+    "16": "logos/icon16.png",
+    "32": "logos/icon32.png",
+    "48": "logos/icon48.png",
+    "128": "logos/icon128.png"
+  },
+  "host_permissions": [
+    "https://launchblitz.ai/*",
+    "https://beta.launchblitz.ai/*",
+    "https://www.launchblitz.ai/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://axiom.trade/*",
+        "https://*.axiom.trade/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    },
+    {
+      "matches": [
+        "https://launchblitz.ai/*",
+        "https://beta.launchblitz.ai/*",
+        "https://www.launchblitz.ai/*"
+      ],
+      "js": ["launchblitz.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Launchblitz"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "listening.html",
+        "listening.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

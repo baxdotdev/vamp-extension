@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            width: 240px;
+            min-height: 180px;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 13px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .status-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .preference-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background: rgba(15, 23, 42, 0.88);
+        }
+
+        .status-label {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        .status-pill {
+            padding: 4px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(30, 41, 59, 0.9);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            transition: color 0.2s ease, border-color 0.2s ease;
+            color: #94a3b8;
+        }
+
+        .preference-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background: rgba(15, 23, 42, 0.88);
+            cursor: pointer;
+        }
+
+        .preference-row:hover {
+            border-color: rgba(148, 163, 184, 0.35);
+        }
+
+        .preference-label {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+
+        .preference-toggle {
+            width: 18px;
+            height: 18px;
+            accent-color: #22c55e;
+        }
+
+        .status-pill[data-state="ready"] {
+            color: #22c55e;
+            border-color: rgba(34, 197, 94, 0.35);
+        }
+
+        .status-pill[data-state="missing"] {
+            color: #fbbf24;
+            border-color: rgba(251, 191, 36, 0.35);
+        }
+
+        .status-pill[data-state="error"] {
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.35);
+        }
+
+        .action-button {
+            border: none;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: #0f172a;
+            background: linear-gradient(135deg, #38bdf8, #6366f1);
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .action-button:active {
+            transform: scale(0.97);
+        }
+
+        .action-button:focus-visible {
+            outline: 2px solid rgba(148, 163, 184, 0.5);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="title">Link Status</h1>
+    <div class="status-list">
+        <div class="status-row">
+            <div class="status-label">Launchblitz</div>
+            <div class="status-pill" id="launchblitzStatus" data-state="checking">Checking...</div>
+        </div>
+        <div class="status-row">
+            <div class="status-label">Axiom.trade</div>
+            <div class="status-pill" id="axiomStatus" data-state="checking">Checking...</div>
+        </div>
+    </div>
+    <div class="preference-list">
+        <label class="preference-row" for="injectVampToggle">
+            <span class="preference-label">Inject VAMP Button</span>
+            <input class="preference-toggle" type="checkbox" id="injectVampToggle" />
+        </label>
+        <button class="action-button" type="button" id="openListenerButton">Open Mint Listener</button>
+    </div>
+    <script src="popup.js" defer></script>
+</body>
+</html>
