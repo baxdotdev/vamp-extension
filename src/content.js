@@ -1,3 +1,5 @@
+//
+
 const IGNORED_LINK_PATTERNS = [
     'pump.fun',
     'bags.fm',
@@ -146,66 +148,110 @@ function determineSecondaryLink(socialLinks, primaryLink) {
     return candidates[0];
 }
 
-// Extract token details from a token section
-// Extract token details from a token section (using same logic as axiom extension)
+// Ticker helpers: normalize text and check for a sensible short code
+function sanitizeTicker(text) {
+    if (!text || typeof text !== 'string') return '';
+    // Keep letters, digits, and $; collapse spaces; uppercase
+    const cleaned = text.replace(/[^A-Za-z0-9$]+/g, '').toUpperCase();
+    return cleaned.slice(0, 12);
+}
+
+function isValidTicker(text) {
+    if (!text) return false;
+    if (text.length < 1 || text.length > 12) return false;
+    // Must contain at least one letter and not be all digits
+    if (!/[A-Z]/.test(text)) return false;
+    if (/^[0-9]+$/.test(text)) return false;
+    return true;
+}
+
+function deriveTickerFromName(name) {
+    if (!name || typeof name !== 'string') return '';
+    // Take first word and sanitize
+    const firstWord = name.trim().split(/\s+/)[0] || '';
+    return sanitizeTicker(firstWord);
+}
+
+// Extract token details from one row/card on the Axiom page
 function extractTokenDetails(tokenSection) {
     try {
-        // Get token symbol/ticker (short version) - try multiple selectors
+        // First try the row that holds ticker + name
         let symbol = '';
-
-        const allTickerSpans = tokenSection.querySelectorAll('span.text-textPrimary');
-
-        for (let i = 0; i < allTickerSpans.length; i++) {
-            const span = allTickerSpans[i];
-            const text = span.textContent.trim();
-
-            if (span.querySelector('span')) {
-                const childSpans = span.querySelectorAll('span');
-                for (let j = 0; j < childSpans.length; j++) {
-                    const childSpan = childSpans[j];
-                    const childText = childSpan.textContent.trim();
-
-                    if (childText.length >= 1 && childText.length <= 15) {
-                        symbol = childText;
-                        break;
-                    }
-                }
-                if (symbol) break;
-                continue;
-            }
-
-            if (text.length >= 1 && text.length <= 15 && text.length < 20) {
-                symbol = text;
-                break;
-            }
-        }
-
-        if (!symbol) {
-            const fallbackSelectors = [
-                '[class*="symbol"]',
-                '[class*="ticker"]',
-                'span[class*="text-xs"]',
-                'span[class*="uppercase"]'
-            ];
-
-            for (const selector of fallbackSelectors) {
-                const symbolElement = tokenSection.querySelector(selector);
-                if (symbolElement && symbolElement.textContent.trim()) {
-                    const candidateSymbol = symbolElement.textContent.trim();
-                    if (candidateSymbol.length >= 1 && candidateSymbol.length <= 20) {
-                        symbol = candidateSymbol;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Get full token name - try multiple selectors
         let fullName = '';
 
+        const nameGroup = tokenSection.querySelector('div.flex.flex-row.gap-\\[4px\\].justify-start.items-center');
+        if (nameGroup) {
+            const tickerEl = nameGroup.querySelector('.text-textPrimary');
+            if (tickerEl && tickerEl.textContent) {
+                const candidate = sanitizeTicker(tickerEl.textContent.trim());
+                if (isValidTicker(candidate)) {
+                    symbol = candidate;
+                }
+            }
+
+            const nameEl = nameGroup.querySelector('.text-inherit');
+            if (nameEl && nameEl.textContent) {
+                fullName = nameEl.textContent.trim();
+            }
+        }
+
+        // If that failed, try broader fallbacks for the ticker
+        if (!symbol) {
+            const allTickerSpans = tokenSection.querySelectorAll('span.text-textPrimary');
+
+            for (let i = 0; i < allTickerSpans.length; i++) {
+                const span = allTickerSpans[i];
+                const text = span.textContent.trim();
+
+                if (span.querySelector('span')) {
+                    const childSpans = span.querySelectorAll('span');
+                    for (let j = 0; j < childSpans.length; j++) {
+                        const childSpan = childSpans[j];
+                        const childText = childSpan.textContent.trim();
+
+                        const candidate = sanitizeTicker(childText);
+                        if (isValidTicker(candidate)) {
+                            symbol = candidate;
+                            break;
+                        }
+                    }
+                    if (symbol) break;
+                    continue;
+                }
+
+                const candidate = sanitizeTicker(text);
+                if (isValidTicker(candidate)) {
+                    symbol = candidate;
+                    break;
+                }
+            }
+
+            if (!symbol) {
+                const fallbackSelectors = [
+                    '[class*="symbol"]',
+                    '[class*="ticker"]',
+                    'span[class*="text-xs"]',
+                    'span[class*="uppercase"]'
+                ];
+
+                for (const selector of fallbackSelectors) {
+                    const symbolElement = tokenSection.querySelector(selector);
+                    if (symbolElement && symbolElement.textContent.trim()) {
+                        const candidateSymbol = sanitizeTicker(symbolElement.textContent.trim());
+                        if (isValidTicker(candidateSymbol)) {
+                            symbol = candidateSymbol;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get full token name (keep what we already found from nameGroup)
+        
         // Try to get from the clickable token name span (most accurate)
         const nameSpan = tokenSection.querySelector('span.text-inherit[class*="font-medium"][class*="truncate"]');
-        if (nameSpan) {
+        if (!fullName && nameSpan) {
             fullName = nameSpan.textContent.trim();
         }
 
@@ -227,9 +273,19 @@ function extractTokenDetails(tokenSection) {
             fullName = imageElement.alt.trim();
         }
 
-        // Use symbol as final fallback if no full name found
+        // As a last resort, use symbol when name is missing
         if (!fullName && symbol) {
             fullName = symbol;
+        }
+
+        // If ticker is still invalid, derive something short from the name
+        if (!isValidTicker(symbol)) {
+            const derived = deriveTickerFromName(fullName);
+            if (isValidTicker(derived)) {
+                symbol = derived;
+            } else {
+                symbol = '';
+            }
         }
 
         // Get image URL
@@ -489,6 +545,20 @@ function addVampButton(tokenSection) {
         return true;
     }
 
+    // If a visible Buy button exists, try placing VAMP right before it
+    const buyBtn = tokenSection.querySelector('button.group\\/quickBuyButton');
+    if (buyBtn) {
+        const container = buyBtn.parentElement;
+        if (container && container.nodeType === 1) {
+            try {
+                container.insertBefore(vampButton, buyBtn);
+                return true;
+            } catch (e) {
+                // fall through to default append
+            }
+        }
+    }
+
     // Default: add to the end of the token section
     tokenSection.appendChild(vampButton);
     return true;
@@ -496,8 +566,9 @@ function addVampButton(tokenSection) {
 
 // Add small VAMP button next to token name (for detailed card layout)
 function addSmallVampButton(tokenCard) {
-    // Find the token name span
-    const tokenNameSpan = tokenCard.querySelector('span.text-textPrimary[class*="text-\\[16px\\]"][class*="font-medium"][class*="truncate"]');
+    // Find the row that contains ticker + name and place the button before it
+    const nameGroup = tokenCard.querySelector('div.flex.flex-row.gap-\\[4px\\].justify-start.items-center');
+    const tokenNameSpan = nameGroup || tokenCard.querySelector('.text-textPrimary, .text-inherit');
     if (!tokenNameSpan) {
         return false;
     }
@@ -553,8 +624,23 @@ function addSmallVampButton(tokenCard) {
         }, 1000);
     });
 
-    // Insert the button right before the token name span
-    tokenNameSpan.parentNode.insertBefore(vampButton, tokenNameSpan);
+    // Prefer inserting inside the name row so it sits directly before the title
+    if (nameGroup) {
+        try {
+            nameGroup.insertBefore(vampButton, nameGroup.firstChild);
+            return true;
+        } catch (_) { /* fall through */ }
+    }
+
+    // Fallback: insert before the name inside the nearest flex row
+    let row = tokenNameSpan.closest('div.flex.flex-row') || tokenNameSpan.parentNode;
+    if (!row) return false;
+    try {
+        row.insertBefore(vampButton, tokenNameSpan);
+        return true;
+    } catch (_) {
+        return false;
+    }
 
     return true;
 }
@@ -724,17 +810,31 @@ function processTokenCards() {
     }
 
     isProcessing = true;
-    // TODO: Update these selectors to match the layouts on your launchpad
-    const tokenInfoSections = document.querySelectorAll('div.flex.flex-row.gap-\\[8px\\].justify-center.items-center');
-    const tokenListItems = document.querySelectorAll('a.flex.flex-row.flex-1[class*="h-\\[88px\\]"], a.flex.flex-row.flex-1[class*="h-\\[64px\\]"]');
+    // Disable the old selectors path; only use the newer layouts
+    const tokenInfoSections = [];
+    // Legacy/anchor-based list items (may be zero in new UI)
+    const tokenListItems = document.querySelectorAll(
+        'a.flex.flex-row.flex-1[class*="h-\\[88px\\]"], ' +
+        'a.flex.flex-row.flex-1[class*="h-\\[64px\\]"]'
+    );
     const modalTokenItems = document.querySelectorAll('a[href^="/meme/"][class*="flex-row"][class*="px-\\[16px\\]"]');
 
-    // ADDITIONAL: New card layout with detailed token info
-    const detailedTokenCards = document.querySelectorAll('div.flex.flex-row.w-full.gap-\\[12px\\][class*="pl-\\[12px\\]"][class*="pr-\\[12px\\]"][class*="pt-\\[12px\\]"][class*="pb-\\[2px\\]"]');
+    // ADDITIONAL: New card layout with detailed token info (may be unused on Pulse list)
+    // Tight selector for row root to avoid nested matches (prevents duplicates)
+    const detailedTokenCards = document.querySelectorAll(
+        'div.flex.flex-row.w-full.gap-\\[12px\\]' +
+        '[class*="pl-\\[12px\\]"]' +
+        '[class*="pr-\\[12px\\]"]' +
+        '[class*="pt-\\[12px\\]"]' +
+        '[class*="pb-\\[2px\\]"]'
+    );
+
+    // NEW: Fallback path — directly target visible Buy buttons and inject relative to them
+    const buyButtons = document.querySelectorAll('button.group\\/quickBuyButton');
 
     let buttonsAdded = 0;
 
-    // Process original token info sections
+    // Old sections path (kept for compatibility). Usually empty in new UI.
     tokenInfoSections.forEach((tokenSection, index) => {
         // Skip if already processed
         if (processedSections.has(tokenSection)) {
@@ -763,7 +863,7 @@ function processTokenCards() {
         }
     });
 
-    // Process token list items
+    // Legacy list items (anchors). Usually zero in the new UI.
     tokenListItems.forEach((tokenItem, index) => {
         // Skip if already processed
         if (processedSections.has(tokenItem)) {
@@ -805,7 +905,50 @@ function processTokenCards() {
         }
     });
 
-    // Process search modal token items
+    // Guard: avoid inserting into headers/toolbars
+    function isLikelyTokenRow(el) {
+        if (!el || el.nodeType !== 1) return false;
+        const hasImg = !!el.querySelector('img');
+        const hasName = !!el.querySelector('span.text-textPrimary, span.text-inherit');
+        return hasImg && hasName;
+    }
+
+    // New UI path: if we didn't match cards, target rows via their Buy button
+    if (detailedTokenCards.length === 0) buyButtons.forEach((buyBtn, index) => {
+        // Determine a reasonable container for insertion
+        const row = buyBtn.closest('div.flex.flex-row.flex-grow.w-full.h-full.items-center.relative')
+            || buyBtn.closest('div.flex.flex-row')
+            || buyBtn.parentElement;
+
+        if (!row) {
+            return;
+        }
+
+        if (!isLikelyTokenRow(row)) {
+            return;
+        }
+
+        if (processedSections.has(row)) {
+            return;
+        }
+
+        const hasVamp = row.querySelector('.vamp-button, .vamp-button-small');
+        if (!hasVamp) {
+            // Prefer placing a small button by the token name; fallback to large near Buy
+            let ok = addSmallVampButton(row);
+            if (!ok) {
+                ok = addVampButton(row);
+            }
+            if (ok) {
+                buttonsAdded++;
+                processedSections.add(row);
+            }
+        } else {
+            processedSections.add(row);
+        }
+    });
+
+    // Search modal items (when present)
     modalTokenItems.forEach((modalItem, index) => {
         // Skip if already processed
         if (processedSections.has(modalItem)) {
@@ -834,7 +977,7 @@ function processTokenCards() {
         }
     });
 
-    // Process detailed token cards (NEW card layout)
+    // Detailed card layout (current primary path)
     detailedTokenCards.forEach((detailedCard, index) => {
         // Skip if already processed
         if (processedSections.has(detailedCard)) {
@@ -843,7 +986,7 @@ function processTokenCards() {
 
         // Check if this card contains the required elements
         const hasTokenImage = detailedCard.querySelector('img');
-        const hasTokenName = detailedCard.querySelector('span.text-textPrimary[class*="text-\\[16px\\]"][class*="font-medium"][class*="truncate"]');
+    const hasTokenName = detailedCard.querySelector('.text-textPrimary, .text-inherit, div.flex.flex-row.gap-\\[4px\\].justify-start.items-center');
 
         // Add VAMP button to any detailed card that has image and name
         if (hasTokenImage && hasTokenName) {
@@ -862,7 +1005,7 @@ function processTokenCards() {
             }
         }
     });
-
+    
     isProcessing = false;
 }
 
@@ -879,42 +1022,10 @@ function init() {
         return;
     }
 
-    // Process existing token cards immediately
-    setTimeout(processTokenCards, 1000);
-
-    // Set up mutation observer for dynamic content
-    const observer = new MutationObserver(() => {
-        setTimeout(processTokenCards, 100);
-    });
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    // Process token cards periodically
-    setInterval(processTokenCards, 1000);
-
-    // Monitor URL changes for SPAs
-    let currentUrl = window.location.href;
-    setInterval(() => {
-        if (window.location.href !== currentUrl) {
-            currentUrl = window.location.href;
-            if (shouldRunOnThisPage()) {
-                setTimeout(processTokenCards, 500);
-            }
-        }
-    }, 1000);
-
-    // Process on scroll (for infinite scroll)
-    let scrollTimeout = null;
-    window.addEventListener('scroll', () => {
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            if (shouldRunOnThisPage()) {
-                processTokenCards();
-            }
-        }, 200);
+    // Wire popup toggle: load preference, listen for changes, then start observers
+    loadPreferences(() => {
+        registerPreferenceListener();
+        startProcessingPipeline();
     });
 }
 
