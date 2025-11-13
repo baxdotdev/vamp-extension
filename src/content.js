@@ -148,28 +148,42 @@ function determineSecondaryLink(socialLinks, primaryLink) {
     return candidates[0];
 }
 
-// Ticker helpers: normalize text and check for a sensible short code
-function sanitizeTicker(text) {
+// Ticker helpers: keep original casing and allow emoji/punctuation.
+// Only trim and collapse spaces; also avoid extremely long values.
+function normalizeTicker(text) {
     if (!text || typeof text !== 'string') return '';
-    // Keep letters, digits, and $; collapse spaces; uppercase
-    const cleaned = text.replace(/[^A-Za-z0-9$]+/g, '').toUpperCase();
-    return cleaned.slice(0, 12);
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    return collapsed.slice(0, 20);
 }
 
 function isValidTicker(text) {
     if (!text) return false;
-    if (text.length < 1 || text.length > 12) return false;
-    // Must contain at least one letter and not be all digits
-    if (!/[A-Z]/.test(text)) return false;
-    if (/^[0-9]+$/.test(text)) return false;
-    return true;
+    const s = text.trim();
+    return s.length >= 1 && s.length <= 20;
 }
 
 function deriveTickerFromName(name) {
     if (!name || typeof name !== 'string') return '';
-    // Take first word and sanitize
     const firstWord = name.trim().split(/\s+/)[0] || '';
-    return sanitizeTicker(firstWord);
+    return normalizeTicker(firstWord);
+}
+
+function findTickerNearName(tokenSection) {
+    // Try to locate a name element, then pick the ticker from the same flex row
+    const possibleNames = tokenSection.querySelectorAll('.text-inherit');
+    for (let i = 0; i < possibleNames.length; i++) {
+        const nameEl = possibleNames[i];
+        const row = nameEl.closest('div.flex.flex-row') || nameEl.parentElement;
+        if (!row) continue;
+        const t = row.querySelector('.text-textPrimary');
+        if (t && t.textContent) {
+            const candidate = normalizeTicker(t.textContent.trim());
+            if (isValidTicker(candidate)) {
+                return { symbol: candidate, name: nameEl.textContent.trim() };
+            }
+        }
+    }
+    return null;
 }
 
 // Extract token details from one row/card on the Axiom page
@@ -183,7 +197,7 @@ function extractTokenDetails(tokenSection) {
         if (nameGroup) {
             const tickerEl = nameGroup.querySelector('.text-textPrimary');
             if (tickerEl && tickerEl.textContent) {
-                const candidate = sanitizeTicker(tickerEl.textContent.trim());
+                const candidate = normalizeTicker(tickerEl.textContent.trim());
                 if (isValidTicker(candidate)) {
                     symbol = candidate;
                 }
@@ -197,6 +211,15 @@ function extractTokenDetails(tokenSection) {
 
         // If that failed, try broader fallbacks for the ticker
         if (!symbol) {
+            const near = findTickerNearName(tokenSection);
+            if (near) {
+                symbol = near.symbol || symbol;
+                if (!fullName && near.name) {
+                    fullName = near.name;
+                }
+            }
+        }
+        if (!symbol) {
             const allTickerSpans = tokenSection.querySelectorAll('span.text-textPrimary');
 
             for (let i = 0; i < allTickerSpans.length; i++) {
@@ -209,7 +232,7 @@ function extractTokenDetails(tokenSection) {
                         const childSpan = childSpans[j];
                         const childText = childSpan.textContent.trim();
 
-                        const candidate = sanitizeTicker(childText);
+                        const candidate = normalizeTicker(childText);
                         if (isValidTicker(candidate)) {
                             symbol = candidate;
                             break;
@@ -219,7 +242,7 @@ function extractTokenDetails(tokenSection) {
                     continue;
                 }
 
-                const candidate = sanitizeTicker(text);
+                const candidate = normalizeTicker(text);
                 if (isValidTicker(candidate)) {
                     symbol = candidate;
                     break;
@@ -237,7 +260,7 @@ function extractTokenDetails(tokenSection) {
                 for (const selector of fallbackSelectors) {
                     const symbolElement = tokenSection.querySelector(selector);
                     if (symbolElement && symbolElement.textContent.trim()) {
-                        const candidateSymbol = sanitizeTicker(symbolElement.textContent.trim());
+                        const candidateSymbol = normalizeTicker(symbolElement.textContent.trim());
                         if (isValidTicker(candidateSymbol)) {
                             symbol = candidateSymbol;
                             break;
