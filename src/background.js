@@ -1,9 +1,7 @@
 // Background service worker responsible for relaying Vamp payloads to launchblitz.ai tabs.
 const listenerState = {
     tabId: null,
-    creating: false,
-    ports: new Set(),
-    pendingEvents: []
+    ports: new Set()
 };
 
 const imageCache = new Map();
@@ -60,38 +58,6 @@ async function buildLocalImageUrl(sourceUrl) {
     }
 }
 
-function ensureListenerTab() {
-    if (listenerState.tabId) {
-        chrome.tabs.get(listenerState.tabId, () => {
-            if (chrome.runtime.lastError) {
-                listenerState.tabId = null;
-                ensureListenerTab();
-                return;
-            }
-
-            chrome.tabs.update(listenerState.tabId, { active: true });
-        });
-        return;
-    }
-
-    if (listenerState.creating) {
-        return;
-    }
-
-    listenerState.creating = true;
-    const listenerUrl = chrome.runtime.getURL('listening.html');
-    chrome.tabs.create({ url: listenerUrl }, (tab) => {
-        listenerState.creating = false;
-        const runtimeError = chrome.runtime.lastError;
-        if (runtimeError) {
-            console.warn('[Blitz Extension] Failed to open listening tab:', runtimeError.message);
-            return;
-        }
-
-        listenerState.tabId = tab && tab.id ? tab.id : null;
-    });
-}
-
 function notifyListenerPorts(event) {
     let delivered = false;
     listenerState.ports.forEach((port) => {
@@ -104,26 +70,10 @@ function notifyListenerPorts(event) {
     });
 
     if (!delivered) {
-        listenerState.pendingEvents.push(event);
-        ensureListenerTab();
-    }
-}
-
-function flushPendingEvents() {
-    if (!listenerState.pendingEvents.length || !listenerState.ports.size) {
-        return;
+        console.log('[Blitz Extension] Mint listener not open; dropping mint event.');
     }
 
-    const events = listenerState.pendingEvents.splice(0, listenerState.pendingEvents.length);
-    events.forEach((event) => {
-        listenerState.ports.forEach((port) => {
-            try {
-                port.postMessage(event);
-            } catch (error) {
-                console.warn('[Blitz Extension] Failed to deliver pending event to listener port:', error);
-            }
-        });
-    });
+    return delivered;
 }
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -150,8 +100,6 @@ chrome.runtime.onConnect.addListener((port) => {
         }
     });
 
-    flushPendingEvents();
-
     port.onDisconnect.addListener(() => {
         listenerState.ports.delete(port);
 
@@ -164,7 +112,6 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
     if (listenerState.tabId === tabId) {
         listenerState.tabId = null;
-        listenerState.pendingEvents = [];
     }
 });
 
@@ -181,8 +128,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const eventPayload = { type: 'launchblitz-mint', lp: lp };
-        notifyListenerPorts(eventPayload);
-        sendResponse({ forwarded: true });
+        const delivered = notifyListenerPorts(eventPayload);
+        sendResponse(delivered ? { forwarded: true } : { forwarded: false, reason: 'no-listener' });
         return;
     }
 
